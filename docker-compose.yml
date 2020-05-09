@@ -1,0 +1,61 @@
+# Set docker-compose version
+version: '3'
+networks:
+  db_networks:
+    driver: bridge
+services:
+  db:
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    image: postgres
+    networks:
+      - db_networks
+
+  db_admin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - ./data:/var/lib/pgadmin/data
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    networks:
+      - db_networks
+    restart: unless-stopped
+
+  redis:
+    ports:
+      - "6379:6379"
+    links:
+      - db
+    image: redis:5.0-rc
+  web:
+    build:
+      context: .
+    ports:
+      - "3000:3000"
+    command: bash -c "rm -f tmp/pids/server.pid && rm -f /usr/local/var/postgres/postmaster.pid && bundle exec rails s -p 3000 -b '0.0.0.0'"
+    volumes:
+      - .:/ApiRails
+    environment:
+      - PGHOST=db
+      - PGUSER=postgres
+    depends_on:
+      - db
+      - redis
+    networks:
+      - db_networks
+
+  solar:
+    build: .
+    image: sourcegraph/codeintel-ruby
+    command: 'bundle exec solargraph socket --host=0.0.0.0 --port=7658'
+    working_dir: /ApiRails
+    volumes:
+      - .:/ApiRails
+    ports:
+      - "7658:7658"
